@@ -1,0 +1,25 @@
+graph TD
+  subgraph Frontend [React Frontend]
+    UI[Dashboard UI]
+  end
+
+  subgraph Backend [Node.js Express API]
+    API[REST Endpoints]
+    Poll[Polling Scheduler]
+    Alerts[Email Alert Service]
+  end
+
+  subgraph Providers [CI/CD Providers]
+    GH[GitHub Actions]
+    JENK[Jenkins]
+  end
+
+  DB[(PostgreSQL)]
+
+  UI -->|HTTP /api| API
+  API --> DB
+  Poll --> GH
+  Poll --> JENK
+  GH -->|Webhook /api/webhook/github| API
+  JENK -->|Webhook /api/webhook/jenkins| API
+  API --> Alerts

@@ -1,5 +1,7 @@
 version: '3.9'
+
 services:
+  # PostgreSQL Database
   db:
     image: postgres:15
     environment:
@@ -11,14 +13,51 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend API
   backend:
-    build: ./backend
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       - PORT=3000
       - DATABASE_URL=postgres://postgres:postgres@db:5432/cicd
+      - NODE_ENV=production
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   db_data:
+    driver: local

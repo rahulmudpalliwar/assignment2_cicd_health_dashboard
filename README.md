@@ -2,6 +2,13 @@
 
 Monitor the health of your CI/CD pipelines (GitHub Actions or Jenkins) with real-time metrics, historical builds, and email alerts. The stack includes: Node.js/Express backend, PostgreSQL, React (Vite) frontend, and Docker Compose for containerization.
 
+## Prerequisites
+- Node.js v18+
+- Docker & Docker Compose
+- PostgreSQL (local or containerized)
+- GitHub account with access to Actions workflows
+- Jenkins server with API access
+
 ## Features
 - Success/Failure rate
 - Average build time
@@ -51,6 +58,8 @@ Edit `backend/.env`:
 - DB: PostgreSQL with `builds` and `alerts` tables.
 - Frontend: React app renders metrics and latest builds.
 - Docker: `docker-compose.yml` orchestrates `db`, `backend`, and `frontend`.
+  <img width="877" height="371" alt="image" src="https://github.com/user-attachments/assets/6ccfed12-a696-45e3-82b2-1d2d46ffdd1a" />
+
 
 ## Development (without Docker)
 1. Start Postgres locally and create DB `cicd`. Apply `db/init.sql`.

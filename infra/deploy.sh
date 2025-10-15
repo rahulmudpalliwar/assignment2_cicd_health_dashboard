@@ -49,7 +49,6 @@ check_prerequisites() {
 # Initialize Terraform
 init_terraform() {
     print_status "Initializing Terraform..."
-    cd infra
     terraform init
     print_status "Terraform initialized successfully."
 }

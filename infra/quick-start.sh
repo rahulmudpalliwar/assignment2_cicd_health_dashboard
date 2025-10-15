@@ -76,7 +76,8 @@ check_aws_config() {
     
     if aws sts get-caller-identity &> /dev/null; then
         print_status "AWS credentials configured"
-        aws sts get-caller-identity --query 'Account' --output text | xargs -I {} print_status "AWS Account: {}"
+        AWS_ACCOUNT=$(aws sts get-caller-identity --query 'Account' --output text)
+        print_status "AWS Account: $AWS_ACCOUNT"
     else
         print_error "AWS credentials not configured or invalid"
         print_status "Please run 'aws configure' to set up your credentials"
@@ -133,7 +134,7 @@ deploy_infrastructure() {
     echo "  - Security groups and networking"
     echo "  - Elastic IP for static access"
     echo ""
-    print_warning "Estimated cost: $0 (Free Tier eligible resources)"
+    print_warning "Estimated cost: \$0 (Free Tier eligible resources)"
     echo ""
     
     read -p "Do you want to proceed with the deployment? (y/n): " -r

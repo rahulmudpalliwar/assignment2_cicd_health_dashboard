@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -19,7 +23,7 @@ data "aws_availability_zones" "available" {
 
 # VPC
 resource "aws_vpc" "cicd_vpc" {
-  cidr_block           = var.vpc_cidr
+  cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
 
@@ -37,20 +41,32 @@ resource "aws_internet_gateway" "cicd_igw" {
   }
 }
 
-# Public Subnet
-resource "aws_subnet" "cicd_public_subnet" {
+# Public Subnet 1
+resource "aws_subnet" "public_subnet_1" {
   vpc_id                  = aws_vpc.cicd_vpc.id
-  cidr_block              = var.public_subnet_cidr
+  cidr_block              = "10.0.1.0/24"
   availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "cicd-health-dashboard-public-subnet"
+    Name = "cicd-public-subnet-1"
   }
 }
 
-# Route Table for Public Subnet
-resource "aws_route_table" "cicd_public_rt" {
+# Public Subnet 2
+resource "aws_subnet" "public_subnet_2" {
+  vpc_id                  = aws_vpc.cicd_vpc.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "cicd-public-subnet-2"
+  }
+}
+
+# Route Table
+resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.cicd_vpc.id
 
   route {
@@ -59,22 +75,27 @@ resource "aws_route_table" "cicd_public_rt" {
   }
 
   tags = {
-    Name = "cicd-health-dashboard-public-rt"
+    Name = "cicd-public-rt"
   }
 }
 
-# Route Table Association
-resource "aws_route_table_association" "cicd_public_rta" {
-  subnet_id      = aws_subnet.cicd_public_subnet.id
-  route_table_id = aws_route_table.cicd_public_rt.id
+# Route Table Associations
+resource "aws_route_table_association" "public_rta_1" {
+  subnet_id      = aws_subnet.public_subnet_1.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
-# Security Group for EC2 instance
-resource "aws_security_group" "cicd_sg" {
-  name_prefix = "cicd-health-dashboard-sg"
+resource "aws_route_table_association" "public_rta_2" {
+  subnet_id      = aws_subnet.public_subnet_2.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
+# Security Group for EC2
+resource "aws_security_group" "ec2_sg" {
+  name_prefix = "cicd-ec2-sg"
   vpc_id      = aws_vpc.cicd_vpc.id
 
-  # SSH access
+  # SSH
   ingress {
     from_port   = 22
     to_port     = 22
@@ -82,7 +103,7 @@ resource "aws_security_group" "cicd_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTP access
+  # HTTP
   ingress {
     from_port   = 80
     to_port     = 80
@@ -90,7 +111,7 @@ resource "aws_security_group" "cicd_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTPS access
+  # HTTPS
   ingress {
     from_port   = 443
     to_port     = 443
@@ -98,7 +119,7 @@ resource "aws_security_group" "cicd_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Frontend port
+  # Frontend
   ingress {
     from_port   = 5173
     to_port     = 5173
@@ -106,7 +127,7 @@ resource "aws_security_group" "cicd_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Backend port
+  # Backend API
   ingress {
     from_port   = 3000
     to_port     = 3000
@@ -114,15 +135,7 @@ resource "aws_security_group" "cicd_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # PostgreSQL port (for internal access)
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-  }
-
-  # All outbound traffic
+  # All outbound
   egress {
     from_port   = 0
     to_port     = 0
@@ -131,17 +144,22 @@ resource "aws_security_group" "cicd_sg" {
   }
 
   tags = {
-    Name = "cicd-health-dashboard-sg"
+    Name = "cicd-ec2-sg"
   }
 }
 
-# Key Pair for EC2 access
+# Random ID for unique naming
+resource "random_id" "key_suffix" {
+  byte_length = 4
+}
+
+# Key Pair
 resource "aws_key_pair" "cicd_key" {
-  key_name   = "cicd-health-dashboard-key"
+  key_name   = "cicd-health-dashboard-key-${random_id.key_suffix.hex}"
   public_key = file(var.public_key_path)
 }
 
-# Get latest Amazon Linux 2 AMI
+# Latest Amazon Linux 2 AMI
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -160,10 +178,10 @@ data "aws_ami" "amazon_linux" {
 # EC2 Instance
 resource "aws_instance" "cicd_instance" {
   ami                    = data.aws_ami.amazon_linux.id
-  instance_type          = var.instance_type
+  instance_type          = "t3.micro"  # Free Tier: 750 hours/month
   key_name               = aws_key_pair.cicd_key.key_name
-  vpc_security_group_ids = [aws_security_group.cicd_sg.id]
-  subnet_id              = aws_subnet.cicd_public_subnet.id
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  subnet_id              = aws_subnet.public_subnet_1.id
 
   user_data = templatefile("${path.module}/user_data.sh", {
     app_name = var.app_name
@@ -180,7 +198,7 @@ resource "aws_instance" "cicd_instance" {
   }
 }
 
-# Elastic IP for static public IP
+# Elastic IP
 resource "aws_eip" "cicd_eip" {
   instance = aws_instance.cicd_instance.id
   domain   = "vpc"
@@ -195,7 +213,7 @@ resource "aws_eip" "cicd_eip" {
 # RDS Subnet Group
 resource "aws_db_subnet_group" "cicd_db_subnet_group" {
   name       = "cicd-db-subnet-group"
-  subnet_ids = [aws_subnet.cicd_public_subnet.id]
+  subnet_ids = [aws_subnet.public_subnet_1.id, aws_subnet.public_subnet_2.id]
 
   tags = {
     Name = "cicd-db-subnet-group"
@@ -203,7 +221,7 @@ resource "aws_db_subnet_group" "cicd_db_subnet_group" {
 }
 
 # RDS Security Group
-resource "aws_security_group" "cicd_rds_sg" {
+resource "aws_security_group" "rds_sg" {
   name_prefix = "cicd-rds-sg"
   vpc_id      = aws_vpc.cicd_vpc.id
 
@@ -211,7 +229,7 @@ resource "aws_security_group" "cicd_rds_sg" {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.cicd_sg.id]
+    security_groups = [aws_security_group.ec2_sg.id]
   }
 
   egress {
@@ -226,15 +244,15 @@ resource "aws_security_group" "cicd_rds_sg" {
   }
 }
 
-# RDS Instance (PostgreSQL)
+# RDS Instance
 resource "aws_db_instance" "cicd_postgres" {
   identifier = "cicd-health-dashboard-db"
 
   engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = var.db_instance_class
+  engine_version = "17.4"
+  instance_class = "db.t3.micro"  # Free Tier: 750 hours/month
 
-  allocated_storage     = 20
+  allocated_storage     = 20  # Free Tier: up to 30 GB
   max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true
@@ -243,7 +261,7 @@ resource "aws_db_instance" "cicd_postgres" {
   username = "postgres"
   password = var.db_password
 
-  vpc_security_group_ids = [aws_security_group.cicd_rds_sg.id]
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.cicd_db_subnet_group.name
 
   backup_retention_period = 7
